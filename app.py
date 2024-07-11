@@ -10,6 +10,9 @@ from langchain.llms import HuggingFaceHub
 from langchain.embeddings import HuggingFaceEmbeddings
 
 def get_pdf_text(pdf_docs):
+    if pdf_docs is None or len(pdf_docs) == 0:
+        return ""
+    
     text = ""
     for pdf in pdf_docs:
         pdf_reader = PdfReader(pdf)
@@ -18,6 +21,9 @@ def get_pdf_text(pdf_docs):
     return text
 
 def get_text_chunks(text):
+    if not text:
+        return []
+
     text_splitter = CharacterTextSplitter(
         separator="\n",
         chunk_size=1000,
@@ -28,7 +34,10 @@ def get_text_chunks(text):
     return chunks
 
 def get_vectorstore(text_chunks):
-    # Initialize the HuggingFaceEmbeddings model with a slightly better model
+    if not text_chunks:
+        return None
+    
+    # Initialize the HuggingFaceEmbeddings model with a better model
     embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L12-v2")
     
     # Use FAISS to create a vector store
@@ -37,6 +46,9 @@ def get_vectorstore(text_chunks):
     return vectorstore
 
 def get_conversation_chain(vectorstore):
+    if vectorstore is None:
+        return None
+    
     # Use a more advanced LLM from HuggingFaceHub
     llm = HuggingFaceHub(repo_id="microsoft/DialoGPT-medium", task="conversational", model_kwargs={"temperature": 0.7, "max_length": 1024})
     memory = ConversationBufferMemory(memory_key='chat_history', return_messages=True)
@@ -48,6 +60,9 @@ def get_conversation_chain(vectorstore):
     return conversation_chain
 
 def handle_userinput(user_question):
+    if st.session_state.conversation is None:
+        return
+    
     response = st.session_state.conversation({'question': user_question})
     st.session_state.chat_history = response['chat_history']
 
@@ -62,7 +77,7 @@ def handle_userinput(user_question):
 
 def main():
     load_dotenv()
-    st.set_page_config(page_title="Chat with multiple PDFs", page_icon=":books:")
+    st.set_page_config(page_title="Ask AVA", page_icon=":books:")
     st.write(css, unsafe_allow_html=True)
 
     if "conversation" not in st.session_state:
@@ -70,7 +85,7 @@ def main():
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = None
 
-    st.header("Chat with multiple PDFs :books:")
+    st.header("Ask AVA, a chatbot to answer query related to your documents :books:")
     user_question = st.text_input("Ask a question about your documents:")
     if user_question:
         handle_userinput(user_question)
@@ -86,8 +101,16 @@ def main():
                 # get the text chunks
                 text_chunks = get_text_chunks(raw_text)
 
+                if not text_chunks:
+                    st.warning("No text found in the uploaded PDFs.")
+                    return
+                
                 # create vector store
                 vectorstore = get_vectorstore(text_chunks)
+
+                if vectorstore is None:
+                    st.error("Failed to create vector store.")
+                    return
 
                 # create conversation chain
                 st.session_state.conversation = get_conversation_chain(vectorstore)
